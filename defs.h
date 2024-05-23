@@ -192,7 +192,8 @@ void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
 int             sballoc();
-void            swap_out(struct page *page);
+void            swap_out();
+void            swap_in(uint);
 int             handle_page_fault();
 
 // number of elements in fixed-size array

@@ -43,8 +43,11 @@ walkpgdir(pde_t *pgdir, const void *va, int alloc)
   if(*pde & PTE_P){
     pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
   } else {
-    if(!alloc || (pgtab = (pte_t*)kalloc()) == 0)
-      return 0;
+    if(!alloc || (pgtab = (pte_t*)kalloc()) == 0){
+      swap_out();
+      pgtab = (pte_t*)kalloc();
+      kalloc2(pgdir, pgtab, va);
+    }
     // Make sure all those PTE_P bits are zero.
     memset(pgtab, 0, PGSIZE);
     // The permissions here are overly generous, but they can
@@ -69,6 +72,7 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
   for(;;){
     if((pte = walkpgdir(pgdir, a, 1)) == 0)
       return -1;
+    // TODO: PTE_P가 0인 경우도 remap인 상황이 있을까?
     if(*pte & PTE_P)
       panic("remap");
     *pte = pa | perm | PTE_P;
@@ -185,6 +189,7 @@ switchuvm(struct proc *p)
 void
 inituvm(pde_t *pgdir, char *init, uint sz)
 {
+  cprintf("HELO?\n");
   char *mem;
 
   if(sz >= PGSIZE)
@@ -236,16 +241,12 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   for(; a < newsz; a += PGSIZE){
     mem = kalloc();
     if(mem == 0){
-      cprintf("allocuvm out of memory\n");
-      deallocuvm(pgdir, newsz, oldsz);
-      return 0;
+      swap_out();
+      mem = kalloc();
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
-      cprintf("allocuvm out of memory (2)\n");
-      deallocuvm(pgdir, newsz, oldsz);
-      kfree(mem);
-      return 0;
+      panic("error!");
     }
     kalloc2(pgdir, mem, a);
   }
@@ -324,6 +325,7 @@ copyuvm(pde_t *pgdir, uint sz)
   pte_t *pte;
   uint pa, i, flags;
   char *mem;
+  int off;
 
   if((d = setupkvm()) == 0)
     return 0;
@@ -331,22 +333,24 @@ copyuvm(pde_t *pgdir, uint sz)
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P)){ // Swapped-out pages should also be copied.
-      int off = (PTE_ADDR(*pte) >> 12);
-      if((mem = kalloc()) == 0)
-        goto bad; 
+      off = (PTE_ADDR(*pte) >> 12);
+      if((mem = kalloc()) == 0) {
+        swap_out(); 
+        mem = kalloc();
+      }
       swapread(mem, off);
-      flags = PTE_FALGS(*pte) | PTE_P;
+      flags = PTE_FLAGS(*pte) | PTE_P;
     } else {
       pa = PTE_ADDR(*pte);
       flags = PTE_FLAGS(*pte);
-      if((mem = kalloc()) == 0)
-        goto bad;
+      if((mem = kalloc()) == 0) {
+        swap_out();
+        mem = kalloc();
+      }
       memmove(mem, (char*)P2V(pa), PGSIZE);
     }
     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
-      kfree(mem);
-      kfree2(mem);
-      goto bad;
+      panic("error!");
     }
     kalloc2(d, mem, i);
   }
@@ -414,12 +418,14 @@ sballoc()
 }
 
 void
-swap_out(struct page *page)
+swap_out()
 {
+  struct page *page;
   pte_t *pte;
   uint pa;
   int off;
   
+  page = find_victim();
   pte = walkpgdir(page->pgdir, page->vaddr, 0);
   if(*pte == 0)
     panic("error!!");
@@ -431,8 +437,13 @@ swap_out(struct page *page)
 
   *pte = (off << 12) | PTE_FLAGS(*pte);
   *pte &= ~PTE_P;
+
+  kfree(P2V(pa));
+  kfree2(P2V(pa));
 }
 
+// swap space에 있는 것들은 무조건 swappable임!
+// must be page aligned
 void
 swap_in(uint fault_addr)
 {
@@ -447,6 +458,7 @@ swap_in(uint fault_addr)
   off = (PTE_ADDR(*pte) >> 12);
 
   mem = kalloc();
+  kalloc2(pgdir, mem, fault_addr);
 
   swapread(mem, off);
 
@@ -460,7 +472,7 @@ handle_page_fault()
 {
   uint fault_addr = rcr2();
   
-  swap_in(fault_addr);
+  swap_in(PGROUNDDOWN(fault_addr));
 
   return fault_addr;
 }
