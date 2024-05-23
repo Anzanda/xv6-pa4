@@ -67,9 +67,12 @@ void            ioapicinit(void);
 
 // kalloc.c
 char*           kalloc(void);
+void            kalloc2(pde_t*, char*, char*);
 void            kfree(char*);
+void            kfree2(char*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
+int             tmp(void);
 
 // kbd.c
 void            kbdintr(void);

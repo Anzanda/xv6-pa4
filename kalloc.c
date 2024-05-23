@@ -77,10 +77,12 @@ kfree(char *v)
   r = (struct run*)v;
   r->next = kmem.freelist;
   kmem.freelist = r;
+
+  num_free_pages += 1;
+
   if(kmem.use_lock)
     release(&kmem.lock);
 }
-
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
@@ -95,10 +97,83 @@ kalloc(void)
   r = kmem.freelist;
 //  if(!r && reclaim())
 //	  goto try_again;
-  if(r)
+  if(r) {
     kmem.freelist = r->next;
+    num_free_pages -= 1;
+  }
   if(kmem.use_lock)
     release(&kmem.lock);
   return (char*)r;
 }
 
+void
+kalloc2(pde_t *pgdir, char *pa, char *va)
+{
+  struct page *page = &pages[V2P(pa)/PGSIZE];
+
+  page->pgdir = pgdir;
+  page->vaddr = va;
+
+  if(num_lru_pages == 0) { // n == 0
+    page->prev = page;
+    page->next = page;
+  } else {
+    if(num_lru_pages == 1) { // n == 1
+      page->prev = page_lru_head;
+      page_lru_head->next = page; 
+    } else { // n > 1
+      page_lru_head->prev->next = page; 
+      page->prev = page_lru_head->prev;
+    }
+    page_lru_head->prev = page;
+    page->next = page_lru_head;
+  }
+  page_lru_head = page;
+
+  num_lru_pages += 1;
+}
+
+void
+kfree2(char *v)
+{
+  struct page *page = &pages[V2P(v)/PGSIZE];
+  page->pgdir = 0;
+  page->vaddr = 0;
+
+  if(!is_in_lru_list(v))
+    return;
+
+  if(page == page_lru_head)
+    page_lru_head = page->next;
+
+  struct page *curr = page_lru_head;
+  if(num_lru_pages > 1) { // n > 1
+    page->prev->next = page->next;
+    page->next->prev = page->prev;
+  } else { // n == 1
+    page_lru_head = 0;
+  }
+  page->next = 0;
+  page->prev = 0;
+
+  num_lru_pages -= 1;
+}
+int is_in_lru_list(char *v)
+{
+  struct page *page = &pages[V2P(v)/PGSIZE];
+  if(page == page_lru_head)
+    return 1;
+
+  struct page *curr = page_lru_head->next;
+  while(curr != page_lru_head) {
+    if(page == curr)
+      return 1;
+    curr = curr->next;
+  }
+  return 0;
+}
+
+int tmp(void)
+{
+  return num_lru_pages;
+}
