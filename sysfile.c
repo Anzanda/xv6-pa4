@@ -483,5 +483,7 @@ int sys_swapstat(void)
 
 int sys_test(void)
 {
-  find_victim(); 
+  struct page *page = find_victim();
+  cprintf("victim: %d\n", page->vaddr);
+  swap_out(page);  
 }

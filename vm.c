@@ -9,6 +9,7 @@
 
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
+char *sbmap;
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
@@ -141,6 +142,8 @@ void
 kvmalloc(void)
 {
   kpgdir = setupkvm();
+  sbmap = kalloc();
+  memset(sbmap, 0, PGSIZE);
   switchkvm();
 }
 
@@ -387,6 +390,73 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
     va = va0 + PGSIZE;
   }
   return 0;
+}
+
+// Allocate a swap space blocks
+int
+sballoc()
+{
+  int bi, m;
+  for(bi = 0; bi < PGSIZE * 8; bi++){
+    m = 1 << (bi % 8); 
+    if((sbmap[bi/8] & m) == 0){ // Is swapsapce free?
+      sbmap[bi/8] |= m;
+      return bi;
+    }
+  }
+  panic("error!!");
+}
+
+void
+swap_out(struct page *page)
+{
+  pte_t *pte;
+  uint pa;
+  int off;
+  
+  pte = walkpgdir(page->pgdir, page->vaddr, 0);
+  if(*pte == 0)
+    panic("error!!");
+
+  pa = PTE_ADDR(*pte);
+  off = sballoc();
+
+  swapwrite(P2V(pa), off);
+
+  *pte = (off << 12) | PTE_FLAGS(*pte);
+  *pte &= ~PTE_P;
+}
+
+void
+swap_in(uint fault_addr)
+{
+  pde_t *pgdir;
+  pte_t *pte;
+  int off;
+
+  char *mem;
+
+  pgdir = myproc()->pgdir;
+  pte = walkpgdir(pgdir, fault_addr, 0); 
+  off = (PTE_ADDR(*pte) >> 12);
+
+  mem = kalloc();
+
+  swapread(mem, off);
+
+  *pte = V2P(mem) | PTE_FLAGS(*pte);
+  *pte |= PTE_P;
+}
+
+// TODO: swap_in이 아니라면 -1 리턴해서 panic.
+int
+handle_page_fault()
+{
+  uint fault_addr = rcr2();
+  
+  swap_in(fault_addr);
+
+  return fault_addr;
 }
 
 //PAGEBREAK!

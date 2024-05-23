@@ -72,7 +72,7 @@ void            kfree(char*);
 void            kfree2(char*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
-void            find_victim();
+struct page*    find_victim();
 int             tmp(void);
 
 // kbd.c
@@ -191,6 +191,9 @@ void            switchuvm(struct proc*);
 void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
+int             sballoc();
+void            swap_out(struct page *page);
+int             handle_page_fault();
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

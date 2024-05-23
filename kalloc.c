@@ -109,6 +109,8 @@ kalloc(void)
 void
 kalloc2(pde_t *pgdir, char *pa, char *va)
 {
+  cprintf("pgdir: %d\n", pgdir);
+  cprintf("va: %d\n", va);
   struct page *page = &pages[V2P(pa)/PGSIZE];
 
   page->pgdir = pgdir;
@@ -174,13 +176,14 @@ kfree2(char *v)
   num_lru_pages -= 1;
 }
 
-void
+struct page*
 find_victim()
 {
   struct page *curr = page_lru_head;
   pde_t *pde;
   pte_t *pgtab;
   pte_t *pte;
+  return curr;
   while(1) {
     pde = &curr->pgdir[PDX(curr->vaddr)];
     if(*pde & PTE_P) {
@@ -204,8 +207,7 @@ find_victim()
         curr->next = page_lru_head;
       }
     } else {
-      cprintf("victim: %d\n", curr->vaddr);
-      break;
+      return curr;
     }
     curr = curr->next;
   }

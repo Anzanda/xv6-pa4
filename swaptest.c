@@ -12,7 +12,10 @@
 int main () {
 	// int a, b;
 
-    // swapstat(&a, &b);
+    int* a = malloc(4);
+    printf(1, "addr: 0x%x\n", a);
+    a[0] = 574;
     test();
+    printf(1, "%d\n", a[0]);
     exit();
 }
