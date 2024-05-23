@@ -133,6 +133,21 @@ kalloc2(pde_t *pgdir, char *pa, char *va)
   num_lru_pages += 1;
 }
 
+static int
+is_in_lru_list(char *v)
+{
+  struct page *page = &pages[V2P(v)/PGSIZE];
+  if(page == page_lru_head)
+    return 1;
+
+  struct page *curr = page_lru_head->next;
+  while(curr != page_lru_head) {
+    if(page == curr)
+      return 1;
+    curr = curr->next;
+  }
+  return 0;
+}
 void
 kfree2(char *v)
 {
@@ -147,10 +162,10 @@ kfree2(char *v)
     page_lru_head = page->next;
 
   struct page *curr = page_lru_head;
-  if(num_lru_pages > 1) { // n > 1
+  if(num_lru_pages > 1) {
     page->prev->next = page->next;
     page->next->prev = page->prev;
-  } else { // n == 1
+  } else {
     page_lru_head = 0;
   }
   page->next = 0;
@@ -158,22 +173,40 @@ kfree2(char *v)
 
   num_lru_pages -= 1;
 }
-int is_in_lru_list(char *v)
-{
-  struct page *page = &pages[V2P(v)/PGSIZE];
-  if(page == page_lru_head)
-    return 1;
 
-  struct page *curr = page_lru_head->next;
-  while(curr != page_lru_head) {
-    if(page == curr)
-      return 1;
+void
+find_victim()
+{
+  struct page *curr = page_lru_head;
+  pde_t *pde;
+  pte_t *pgtab;
+  pte_t *pte;
+  while(1) {
+    pde = &curr->pgdir[PDX(curr->vaddr)];
+    if(*pde & PTE_P) {
+      pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+      pte = &pgtab[PTX(curr->vaddr)];
+    } else {
+      cprintf("error!!!!!!!!!!\n");
+    }
+    if(*pte & PTE_A) {
+      cprintf("pte has accessed bit\n");
+      *pte &= (~PTE_A);
+      if(curr == page_lru_head) {
+        page_lru_head = curr->next;
+      } else {
+        // move to tail
+        curr->prev->next = curr->next;
+        curr->next->prev = curr->prev;
+        page_lru_head->prev->next = curr;
+        curr->prev = page_lru_head->prev;
+        page_lru_head->prev = curr;
+        curr->next = page_lru_head;
+      }
+    } else {
+      cprintf("victim: %d\n", curr->vaddr);
+      break;
+    }
     curr = curr->next;
   }
-  return 0;
-}
-
-int tmp(void)
-{
-  return num_lru_pages;
 }

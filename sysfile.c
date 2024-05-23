@@ -480,3 +480,8 @@ int sys_swapstat(void)
 	*nr_write = nr_sectors_write;
 	return 0;
 }
+
+int sys_test(void)
+{
+  find_victim(); 
+}

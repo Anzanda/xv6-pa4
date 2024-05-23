@@ -237,7 +237,6 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       deallocuvm(pgdir, newsz, oldsz);
       return 0;
     }
-    kalloc2(myproc()->pgdir, mem, a);
     memset(mem, 0, PGSIZE);
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
       cprintf("allocuvm out of memory (2)\n");
@@ -245,6 +244,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       kfree(mem);
       return 0;
     }
+    kalloc2(pgdir, mem, a);
   }
   return newsz;
 }
@@ -333,13 +333,13 @@ copyuvm(pde_t *pgdir, uint sz)
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
       goto bad;
-    kalloc2(myproc()->pgdir, mem, i);
     memmove(mem, (char*)P2V(pa), PGSIZE);
     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
       kfree(mem);
       kfree2(mem);
       goto bad;
     }
+    kalloc2(d, mem, i);
   }
   return d;
 

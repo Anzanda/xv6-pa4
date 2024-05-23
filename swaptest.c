@@ -10,7 +10,9 @@
 
 
 int main () {
-	int a, b;
+	// int a, b;
 
-    swapstat(&a, &b);
+    // swapstat(&a, &b);
+    test();
+    exit();
 }

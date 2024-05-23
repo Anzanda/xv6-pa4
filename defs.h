@@ -72,6 +72,7 @@ void            kfree(char*);
 void            kfree2(char*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
+void            find_victim();
 int             tmp(void);
 
 // kbd.c
