@@ -262,6 +262,7 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
   pte_t *pte;
   uint a, pa;
+  int off;
 
   if(newsz >= oldsz)
     return oldsz;
@@ -278,6 +279,10 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       char *v = P2V(pa);
       kfree(v);
       kfree2(v);
+      *pte = 0;
+    } else { // Swapped-out pages should be cleared in bitmap and set PTE bits to 0
+      off = (PTE_ADDR(*pte) >> 12);
+      sbfree(off);
       *pte = 0;
     }
   }
