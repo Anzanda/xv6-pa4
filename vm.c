@@ -330,13 +330,19 @@ copyuvm(pde_t *pgdir, uint sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
-    if(!(*pte & PTE_P))
-      panic("copyuvm: page not present");
-    pa = PTE_ADDR(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto bad;
-    memmove(mem, (char*)P2V(pa), PGSIZE);
+    if(!(*pte & PTE_P)){ // Swapped-out pages should also be copied.
+      int off = (PTE_ADDR(*pte) >> 12);
+      if((mem = kalloc()) == 0)
+        goto bad; 
+      swapread(mem, off);
+      flags = PTE_FALGS(*pte) | PTE_P;
+    } else {
+      pa = PTE_ADDR(*pte);
+      flags = PTE_FLAGS(*pte);
+      if((mem = kalloc()) == 0)
+        goto bad;
+      memmove(mem, (char*)P2V(pa), PGSIZE);
+    }
     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
       kfree(mem);
       kfree2(mem);
