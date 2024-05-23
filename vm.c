@@ -416,6 +416,18 @@ sballoc()
   }
   panic("error!!");
 }
+void
+sbfree(int bi)
+{
+  int m;
+
+  m = 1 << (bi % 8);
+  if((sbmap[bi/8] & m) == 0){
+    panic("error!");
+  } else {
+    sbmap[bi/8] &= (~m);
+  }
+}
 
 void
 swap_out()
@@ -461,6 +473,7 @@ swap_in(uint fault_addr)
   kalloc2(pgdir, mem, fault_addr);
 
   swapread(mem, off);
+  sbfree(off);
 
   *pte = V2P(mem) | PTE_FLAGS(*pte);
   *pte |= PTE_P;
