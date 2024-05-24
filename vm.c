@@ -11,11 +11,14 @@ extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 char *sbmap;
 
+int num_pgtab;
+
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
 void
 seginit(void)
 {
+  num_pgtab = 0;
   struct cpu *c;
 
   // Map "logical" addresses to virtual addresses using identity map.
@@ -44,12 +47,14 @@ walkpgdir(pde_t *pgdir, const void *va, int alloc)
     pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
   } else {
     if(!alloc || (pgtab = (pte_t*)kalloc()) == 0){
-      swap_out();
-      pgtab = (pte_t*)kalloc();
-      kalloc2(pgdir, pgtab, va);
+      return 0;
+    }
+    if((pgtab = (pte_t*)kalloc()) == 0){
+      panic("walkpgdir(): out of memory");
     }
     // Make sure all those PTE_P bits are zero.
     memset(pgtab, 0, PGSIZE);
+    num_pgtab += 1;
     // The permissions here are overly generous, but they can
     // be further restricted by the permissions in the page table
     // entries, if necessary.
@@ -189,7 +194,6 @@ switchuvm(struct proc *p)
 void
 inituvm(pde_t *pgdir, char *init, uint sz)
 {
-  cprintf("HELO?\n");
   char *mem;
 
   if(sz >= PGSIZE)
@@ -197,6 +201,7 @@ inituvm(pde_t *pgdir, char *init, uint sz)
   mem = kalloc();
   memset(mem, 0, PGSIZE);
   mappages(pgdir, 0, PGSIZE, V2P(mem), PTE_W|PTE_U);
+  kalloc2(pgdir, mem, 0);
   memmove(mem, init, sz);
 }
 
@@ -241,12 +246,11 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   for(; a < newsz; a += PGSIZE){
     mem = kalloc();
     if(mem == 0){
-      swap_out();
-      mem = kalloc();
+      panic("allocuvm: out of memory");
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
-      panic("error!");
+      panic("mappages in allocuvm()");
     }
     kalloc2(pgdir, mem, a);
   }
@@ -280,7 +284,7 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       kfree(v);
       kfree2(v);
       *pte = 0;
-    } else { // Swapped-out pages should be cleared in bitmap and set PTE bits to 0
+    } else if(*pte != 0){ // Swapped-out pages should be cleared in bitmap and set PTE bits to 0
       off = (PTE_ADDR(*pte) >> 12);
       sbfree(off);
       *pte = 0;
@@ -340,8 +344,7 @@ copyuvm(pde_t *pgdir, uint sz)
     if(!(*pte & PTE_P)){ // Swapped-out pages should also be copied.
       off = (PTE_ADDR(*pte) >> 12);
       if((mem = kalloc()) == 0) {
-        swap_out(); 
-        mem = kalloc();
+        panin("copyuvm: out of memory");
       }
       swapread(mem, off);
       flags = PTE_FLAGS(*pte) | PTE_P;
@@ -349,13 +352,12 @@ copyuvm(pde_t *pgdir, uint sz)
       pa = PTE_ADDR(*pte);
       flags = PTE_FLAGS(*pte);
       if((mem = kalloc()) == 0) {
-        swap_out();
-        mem = kalloc();
+        panin("copyuvm: out of memory");
       }
       memmove(mem, (char*)P2V(pa), PGSIZE);
     }
     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
-      panic("error!");
+      panin("copyuvm: out of memory");
     }
     kalloc2(d, mem, i);
   }
@@ -419,7 +421,7 @@ sballoc()
       return bi;
     }
   }
-  panic("error!!");
+  panic("sballoc()");
 }
 void
 sbfree(int bi)
@@ -428,13 +430,13 @@ sbfree(int bi)
 
   m = 1 << (bi % 8);
   if((sbmap[bi/8] & m) == 0){
-    panic("error!");
+    panic("sbfree()");
   } else {
     sbmap[bi/8] &= (~m);
   }
 }
 
-void
+int
 swap_out()
 {
   struct page *page;
@@ -443,9 +445,11 @@ swap_out()
   int off;
   
   page = find_victim();
+  if(page == 0)
+    return 0;
   pte = walkpgdir(page->pgdir, page->vaddr, 0);
   if(*pte == 0)
-    panic("error!!");
+    panic("swap_out()");
 
   pa = PTE_ADDR(*pte);
   off = sballoc();
@@ -457,6 +461,8 @@ swap_out()
 
   kfree(P2V(pa));
   kfree2(P2V(pa));
+
+  return 1;
 }
 
 // swap space에 있는 것들은 무조건 swappable임!
@@ -493,6 +499,12 @@ handle_page_fault()
   swap_in(PGROUNDDOWN(fault_addr));
 
   return fault_addr;
+}
+
+int
+num_of_pgtab()
+{
+  return num_pgtab;
 }
 
 //PAGEBREAK!

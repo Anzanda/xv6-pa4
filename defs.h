@@ -74,6 +74,8 @@ void            kinit1(void*, void*);
 void            kinit2(void*, void*);
 struct page*    find_victim();
 int             tmp(void);
+int             num_of_free_pages(void);
+int             num_of_lru_pages(void);
 
 // kbd.c
 void            kbdintr(void);
@@ -192,9 +194,11 @@ void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
 int             sballoc();
-void            swap_out();
+void            sbfree(int);
+int             swap_out();
 void            swap_in(uint);
 int             handle_page_fault();
+int             num_of_pgtab();
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

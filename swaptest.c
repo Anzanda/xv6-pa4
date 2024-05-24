@@ -7,15 +7,17 @@
 #include "syscall.h"
 #include "traps.h"
 #include "memlayout.h"
+#include "mmu.h"
 
 
 int main () {
-	// int a, b;
-
-    int* a = malloc(4);
-    printf(1, "addr: 0x%x\n", a);
-    a[0] = 574;
+    int nr, nw;
     test();
-    printf(1, "%d\n", a[0]);
+    swapstat(&nr, &nw);
+    printf(1, "nr: %d\nnw: %d\n", nr, nw);
+    sbrk(PGSIZE*56100);
+    swapstat(&nr, &nw);
+    printf(1, "nr: %d\nnw: %d\n", nr, nw);
+    test();
     exit();
 }

@@ -91,7 +91,7 @@ kalloc(void)
 {
   struct run *r;
 
-//try_again:
+try_again:
   if(kmem.use_lock)
     acquire(&kmem.lock);
   r = kmem.freelist;
@@ -100,6 +100,14 @@ kalloc(void)
   if(r) {
     kmem.freelist = r->next;
     num_free_pages -= 1;
+  } else {
+    if(kmem.use_lock)
+      release(&kmem.lock);
+    if(swap_out() == -1) { // out of memory
+      cprintf("kalloc: out of memory\n");
+      return (char*)0;
+    }
+    goto try_again;
   }
   if(kmem.use_lock)
     release(&kmem.lock);
@@ -109,8 +117,6 @@ kalloc(void)
 void
 kalloc2(pde_t *pgdir, char *pa, char *va)
 {
-  cprintf("pgdir: %d\n", pgdir);
-  cprintf("va: %d\n", va);
   struct page *page = &pages[V2P(pa)/PGSIZE];
 
   page->pgdir = pgdir;
@@ -157,8 +163,12 @@ kfree2(char *v)
   page->pgdir = 0;
   page->vaddr = 0;
 
-  if(!is_in_lru_list(v))
-    return;
+  // for testing!!!! 나중에 삭제할 것.
+  // kfree2를 시도한 mem은 무조건 swappable이어야 한다.
+  // if(!is_in_lru_list(v)) {
+  //   panic("kfree2()");
+  //   return;
+  // }
 
   if(page == page_lru_head)
     page_lru_head = page->next;
@@ -183,7 +193,9 @@ find_victim()
   pde_t *pde;
   pte_t *pgtab;
   pte_t *pte;
-  return curr;
+  if(curr == 0) { // 쫓아낼 lru_list
+    return 0;
+  }
   while(1) {
     pde = &curr->pgdir[PDX(curr->vaddr)];
     if(*pde & PTE_P) {
@@ -211,4 +223,14 @@ find_victim()
     }
     curr = curr->next;
   }
+}
+
+int num_of_free_pages()
+{
+  return num_free_pages;
+}
+
+int num_of_lru_pages()
+{
+  return num_lru_pages;
 }
