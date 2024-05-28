@@ -117,7 +117,7 @@ try_again:
 }
 
 void
-kalloc2(pde_t *pgdir, char *pa, char *va)
+kalloc2(pde_t *pgdir, char *pa, void *va)
 {
   acquire(&lru_lock);
   struct page *page = &pages[V2P(pa)/PGSIZE];

@@ -206,7 +206,7 @@ inituvm(pde_t *pgdir, char *init, uint sz)
   mem = kalloc();
   memset(mem, 0, PGSIZE);
   mappages(pgdir, 0, PGSIZE, V2P(mem), PTE_W|PTE_U);
-  kalloc2(pgdir, mem, 0);
+  kalloc2(pgdir, mem, (char*)0);
   memmove(mem, init, sz);
 }
 
@@ -262,7 +262,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       kfree(mem);
       return 0;
     }
-    kalloc2(pgdir, mem, a);
+    kalloc2(pgdir, mem, (char*)a);
   }
   return newsz;
 }
@@ -354,7 +354,8 @@ copyuvm(pde_t *pgdir, uint sz)
     if(!(*pte & PTE_P)){ // Swapped-out pages should also be copied.
       off = (PTE_ADDR(*pte) >> 12);
       if((mem = kalloc()) == 0) {
-        panic("copyuvm: out of memory");
+        cprintf("copyuvm: out of memory\n");
+        goto bad;
       }
       swapread(mem, off);
       flags = PTE_FLAGS(*pte) | PTE_P;
@@ -362,14 +363,17 @@ copyuvm(pde_t *pgdir, uint sz)
       pa = PTE_ADDR(*pte);
       flags = PTE_FLAGS(*pte);
       if((mem = kalloc()) == 0) {
-        panic("copyuvm: out of memory");
+        cprintf("copyuvm: out of memory\n");
+        goto bad;
       }
       memmove(mem, (char*)P2V(pa), PGSIZE);
     }
     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
-      panic("copyuvm: out of memory");
+      cprintf("copyuvm: out of memory(2)\n");
+      kfree(mem);
+      goto bad;
     }
-    kalloc2(d, mem, i);
+    kalloc2(d, mem, (void*)i);
   }
   return d;
 
@@ -499,7 +503,7 @@ swap_in(uint fault_addr)
   off = (PTE_ADDR(*pte) >> 12);
 
   mem = kalloc();
-  kalloc2(pgdir, mem, fault_addr);
+  kalloc2(pgdir, mem, (void*)fault_addr);
 
   swapread(mem, off);
   sbfree(off);
