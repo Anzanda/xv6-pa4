@@ -9,7 +9,7 @@
 #include "memlayout.h"
 
 #define PGSIZE 4096
-#define NUM_PAGES 60000
+#define NUM_PAGES 10000
 
 void
 touch_pages(char *base, int num_pages)
@@ -46,7 +46,7 @@ int
 main(void)
 {
   int i, pid;
-  for(i=0; i<1; i++) {
+  for(i=0; i<3; i++) {
     pid = fork();
     if(pid==0){
         forkfn();

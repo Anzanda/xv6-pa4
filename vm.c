@@ -423,28 +423,33 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 int
 sballoc()
 {
+  acquire(&sb_lock);
   int bi, m;
   for(bi = 0; bi < (SWAPMAX / 8); bi++){
     m = 1 << (bi % 8); 
     if((sbmap[bi/8] & m) == 0){ // Is swapsapce free?
       sbmap[bi/8] |= m;
+      release(&sb_lock);
       return bi;
     }
   }
+  release(&sb_lock);
   return -1;
 }
 
 void
 sbfree(int bi)
 {
+  acquire(&sb_lock);
   int m;
-
   m = 1 << (bi % 8);
   if((sbmap[bi/8] & m) == 0){
+    // release(&sb_lock);
     panic("sbfree()");
   } else {
     sbmap[bi/8] &= (~m);
   }
+  release(&sb_lock);
 }
 
 int
