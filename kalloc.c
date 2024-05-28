@@ -23,6 +23,7 @@ struct {
   struct run *freelist;
 } kmem;
 
+struct spinlock lru_lock;
 struct page pages[PHYSTOP/PGSIZE];
 struct page *page_lru_head;
 int num_free_pages;
@@ -37,6 +38,7 @@ void
 kinit1(void *vstart, void *vend)
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&lru_lock, "lru");
   kmem.use_lock = 0;
   freerange(vstart, vend);
 }
@@ -103,7 +105,7 @@ try_again:
   } else {
     if(kmem.use_lock)
       release(&kmem.lock);
-    if(swap_out() == -1) { // out of memory
+    if(swap_out() == 0) { // out of memory
       cprintf("kalloc: out of memory\n");
       return (char*)0;
     }
@@ -117,6 +119,7 @@ try_again:
 void
 kalloc2(pde_t *pgdir, char *pa, char *va)
 {
+  acquire(&lru_lock);
   struct page *page = &pages[V2P(pa)/PGSIZE];
 
   page->pgdir = pgdir;
@@ -139,6 +142,7 @@ kalloc2(pde_t *pgdir, char *pa, char *va)
   page_lru_head = page;
 
   num_lru_pages += 1;
+  release(&lru_lock);
 }
 
 static int
@@ -156,9 +160,11 @@ is_in_lru_list(char *v)
   }
   return 0;
 }
+
 void
 kfree2(char *v)
 {
+  acquire(&lru_lock);
   struct page *page = &pages[V2P(v)/PGSIZE];
   page->pgdir = 0;
   page->vaddr = 0;
@@ -184,16 +190,19 @@ kfree2(char *v)
   page->prev = 0;
 
   num_lru_pages -= 1;
+  release(&lru_lock);
 }
 
 struct page*
 find_victim()
 {
+  acquire(&lru_lock);
   struct page *curr = page_lru_head;
   pde_t *pde;
   pte_t *pgtab;
   pte_t *pte;
-  if(curr == 0) { // 쫓아낼 lru_list
+  if(curr == 0) { // 쫓아낼 swappable page가 없을 때.
+    release(&lru_lock);
     return 0;
   }
   while(1) {
@@ -202,10 +211,9 @@ find_victim()
       pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
       pte = &pgtab[PTX(curr->vaddr)];
     } else {
-      cprintf("error!!!!!!!!!!\n");
+      panic("find_victim: pde must have PTE_P bits in lru_list");
     }
     if(*pte & PTE_A) {
-      cprintf("pte has accessed bit\n");
       *pte &= (~PTE_A);
       if(curr == page_lru_head) {
         page_lru_head = curr->next;
@@ -219,6 +227,7 @@ find_victim()
         curr->next = page_lru_head;
       }
     } else {
+      release(&lru_lock);
       return curr;
     }
     curr = curr->next;

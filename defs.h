@@ -73,7 +73,6 @@ void            kfree2(char*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
 struct page*    find_victim();
-int             tmp(void);
 int             num_of_free_pages(void);
 int             num_of_lru_pages(void);
 

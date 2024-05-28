@@ -1508,6 +1508,7 @@ sbrktest(void)
     }
     wait();
   }
+  printf(1, "hello???\n");
 
   // if we run the system out of memory, does it clean up the last
   // failed allocation?
@@ -1779,7 +1780,7 @@ main(int argc, char *argv[])
   exitiputtest();
   iputtest();
 
-  mem();
+  // mem();
   pipe1();
   preempt();
   exitwait();

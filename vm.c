@@ -6,10 +6,12 @@
 #include "mmu.h"
 #include "proc.h"
 #include "elf.h"
+#include "spinlock.h"
 
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 char *sbmap;
+struct spinlock sb_lock;
 
 int num_pgtab;
 
@@ -31,6 +33,9 @@ seginit(void)
   c->gdt[SEG_UCODE] = SEG(STA_X|STA_R, 0, 0xffffffff, DPL_USER);
   c->gdt[SEG_UDATA] = SEG(STA_W, 0, 0xffffffff, DPL_USER);
   lgdt(c->gdt, sizeof(c->gdt));
+
+
+  initlock(&sb_lock, "sb");
 }
 
 // Return the address of the PTE in page table pgdir
@@ -246,11 +251,16 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   for(; a < newsz; a += PGSIZE){
     mem = kalloc();
     if(mem == 0){
-      panic("allocuvm: out of memory");
+      cprintf("allocuvm out of memory\n");
+      deallocuvm(pgdir, newsz, oldsz);
+      return 0;
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
-      panic("mappages in allocuvm()");
+      cprintf("allocuvm out of memory (2)\n");
+      deallocuvm(pgdir, newsz, oldsz);
+      kfree(mem);
+      return 0;
     }
     kalloc2(pgdir, mem, a);
   }
@@ -344,7 +354,7 @@ copyuvm(pde_t *pgdir, uint sz)
     if(!(*pte & PTE_P)){ // Swapped-out pages should also be copied.
       off = (PTE_ADDR(*pte) >> 12);
       if((mem = kalloc()) == 0) {
-        panin("copyuvm: out of memory");
+        panic("copyuvm: out of memory");
       }
       swapread(mem, off);
       flags = PTE_FLAGS(*pte) | PTE_P;
@@ -352,12 +362,12 @@ copyuvm(pde_t *pgdir, uint sz)
       pa = PTE_ADDR(*pte);
       flags = PTE_FLAGS(*pte);
       if((mem = kalloc()) == 0) {
-        panin("copyuvm: out of memory");
+        panic("copyuvm: out of memory");
       }
       memmove(mem, (char*)P2V(pa), PGSIZE);
     }
     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
-      panin("copyuvm: out of memory");
+      panic("copyuvm: out of memory");
     }
     kalloc2(d, mem, i);
   }
@@ -414,15 +424,16 @@ int
 sballoc()
 {
   int bi, m;
-  for(bi = 0; bi < PGSIZE * 8; bi++){
+  for(bi = 0; bi < (SWAPMAX / 8); bi++){
     m = 1 << (bi % 8); 
     if((sbmap[bi/8] & m) == 0){ // Is swapsapce free?
       sbmap[bi/8] |= m;
       return bi;
     }
   }
-  panic("sballoc()");
+  return -1;
 }
+
 void
 sbfree(int bi)
 {
@@ -442,7 +453,7 @@ swap_out()
   struct page *page;
   pte_t *pte;
   uint pa;
-  int off;
+  uint off;
   
   page = find_victim();
   if(page == 0)
@@ -453,6 +464,8 @@ swap_out()
 
   pa = PTE_ADDR(*pte);
   off = sballoc();
+  if(off == -1)
+    return 0;
 
   swapwrite(P2V(pa), off);
 
@@ -486,8 +499,7 @@ swap_in(uint fault_addr)
   swapread(mem, off);
   sbfree(off);
 
-  *pte = V2P(mem) | PTE_FLAGS(*pte);
-  *pte |= PTE_P;
+  *pte = V2P(mem) | PTE_FLAGS(*pte) | PTE_P;
 }
 
 // TODO: swap_in이 아니라면 -1 리턴해서 panic.
@@ -495,6 +507,9 @@ int
 handle_page_fault()
 {
   uint fault_addr = rcr2();
+  if(fault_addr >= KERNBASE) {
+    return 0;
+  }
   
   swap_in(PGROUNDDOWN(fault_addr));
 
