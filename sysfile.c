@@ -486,4 +486,5 @@ int sys_test(void)
   cprintf("num_of_free_page: %d\n", num_of_free_pages());
   cprintf("num_of_lru_page: %d\n", num_of_lru_pages());
   cprintf("num_of_pgtab: %d\n", num_of_pgtab());
+  return 0;
 }

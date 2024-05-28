@@ -499,7 +499,7 @@ swap_in(uint fault_addr)
   char *mem;
 
   pgdir = myproc()->pgdir;
-  pte = walkpgdir(pgdir, fault_addr, 0); 
+  pte = walkpgdir(pgdir, (void*)fault_addr, 0); 
   off = (PTE_ADDR(*pte) >> 12);
 
   mem = kalloc();

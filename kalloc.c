@@ -145,22 +145,6 @@ kalloc2(pde_t *pgdir, char *pa, void *va)
   release(&lru_lock);
 }
 
-static int
-is_in_lru_list(char *v)
-{
-  struct page *page = &pages[V2P(v)/PGSIZE];
-  if(page == page_lru_head)
-    return 1;
-
-  struct page *curr = page_lru_head->next;
-  while(curr != page_lru_head) {
-    if(page == curr)
-      return 1;
-    curr = curr->next;
-  }
-  return 0;
-}
-
 void
 kfree2(char *v)
 {
@@ -169,17 +153,9 @@ kfree2(char *v)
   page->pgdir = 0;
   page->vaddr = 0;
 
-  // for testing!!!! 나중에 삭제할 것.
-  // kfree2를 시도한 mem은 무조건 swappable이어야 한다.
-  // if(!is_in_lru_list(v)) {
-  //   panic("kfree2()");
-  //   return;
-  // }
-
   if(page == page_lru_head)
     page_lru_head = page->next;
 
-  struct page *curr = page_lru_head;
   if(num_lru_pages > 1) {
     page->prev->next = page->next;
     page->next->prev = page->prev;
