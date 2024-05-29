@@ -182,6 +182,7 @@ find_victim()
     return 0;
   }
   while(1) {
+    struct page *nxt = curr->next;
     pde = &curr->pgdir[PDX(curr->vaddr)];
     if(*pde & PTE_P) {
       pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
@@ -206,7 +207,7 @@ find_victim()
       release(&lru_lock);
       return curr;
     }
-    curr = curr->next;
+    curr = nxt;
   }
 }
 
